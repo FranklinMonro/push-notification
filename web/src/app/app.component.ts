@@ -1,7 +1,10 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { SwPush, SwUpdate } from '@angular/service-worker';
-import { filter } from 'rxjs';
+import { filter, interval, concat } from 'rxjs';
+import { first } from 'rxjs/operators';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { ApplicationRef } from '@angular/core';
 
 @Component({
     selector: 'app-root',
@@ -15,16 +18,24 @@ export class AppComponent implements OnInit {
 
   private _swPush: SwPush = inject(SwPush)
   private _swUpdate: SwUpdate = inject(SwUpdate)
+  private _snackbar: MatSnackBar = inject(MatSnackBar)
+  private appRef: ApplicationRef = inject(ApplicationRef)
+  private updates: SwUpdate = inject(SwUpdate)
+
   ngOnInit(): void {
     this.requestSubscription();
+    this.setupPeriodicUpdateCheck();
+    // this.checkForUpdates();
   }
 
   checkForUpdates() {
     this._swUpdate.versionUpdates
       .pipe(filter(evt => evt.type === 'VERSION_READY'))
       .subscribe(() => {
-        console.log('A new version is available. Reload the page to update.');
-        // this._swUpdate.activateUpdate().then(() => document.location.reload());
+        const snackBarRef = this._snackbar.open('A new version is available.', 'Reload');
+        snackBarRef.onAction().subscribe(() => {
+          this._swUpdate.activateUpdate().then(() => document.location.reload());
+        });
       });
   }
 
@@ -34,10 +45,24 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    // this._swPush.requestSubscription({
-    //   serverPublicKey: '<VAPID_PUBLIC_KEY_FROM_BACKEND>'
-    // }).then((_) => {
-    //   console.log(JSON.stringify(_));
-    // }).catch((_) => console.log);
+    this._swPush.requestSubscription({
+      serverPublicKey: '<VAPID_PUBLIC_KEY_FROM_BACKEND>'
+    }).then((_) => {
+      console.log(JSON.stringify(_));
+    }).catch((_) => console.log);
+  }
+
+  setupPeriodicUpdateCheck() {
+    const appIsStable$ = this.appRef.isStable.pipe(first(isStable => isStable === true));
+    const everyThirtyMinutes$ = interval(30 * 60 * 1000);
+    const everyThirtyMinutesOnceAppIsStable$ = concat(appIsStable$, everyThirtyMinutes$);
+
+    everyThirtyMinutesOnceAppIsStable$.subscribe(async () => {
+      try {
+        await this.updates.checkForUpdate();
+      } catch (err) {
+        console.error('Failed to check for updates:', err);
+      }
+    });
   }
 }
