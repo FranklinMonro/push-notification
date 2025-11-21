@@ -1,6 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { SwPush } from '@angular/service-worker';
+import { SwPush, SwUpdate } from '@angular/service-worker';
+import { filter } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -13,9 +14,18 @@ export class AppComponent implements OnInit {
   title = 'web';
 
   private _swPush: SwPush = inject(SwPush)
-
+  private _swUpdate: SwUpdate = inject(SwUpdate)
   ngOnInit(): void {
     this.requestSubscription();
+  }
+
+  checkForUpdates() {
+    this._swUpdate.versionUpdates
+      .pipe(filter(evt => evt.type === 'VERSION_READY'))
+      .subscribe(() => {
+        console.log('A new version is available. Reload the page to update.');
+        // this._swUpdate.activateUpdate().then(() => document.location.reload());
+      });
   }
 
   requestSubscription() {
@@ -24,10 +34,10 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    this._swPush.requestSubscription({
-      serverPublicKey: '<VAPID_PUBLIC_KEY_FROM_BACKEND>'
-    }).then((_) => {
-      console.log(JSON.stringify(_));
-    }).catch((_) => console.log);
+    // this._swPush.requestSubscription({
+    //   serverPublicKey: '<VAPID_PUBLIC_KEY_FROM_BACKEND>'
+    // }).then((_) => {
+    //   console.log(JSON.stringify(_));
+    // }).catch((_) => console.log);
   }
 }
