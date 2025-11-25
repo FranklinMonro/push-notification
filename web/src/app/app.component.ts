@@ -59,7 +59,10 @@ export class AppComponent implements OnInit {
 
     everyThirtyMinutesOnceAppIsStable$.subscribe(async () => {
       try {
-        await this.updates.checkForUpdate();
+        const updateFound = await this._swUpdate.checkForUpdate();
+        if (updateFound) {
+          this.checkForUpdates();
+        }
       } catch (err) {
         console.error('Failed to check for updates:', err);
       }
