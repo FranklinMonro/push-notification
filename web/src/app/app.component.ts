@@ -2,7 +2,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { SwPush, SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter, interval, concat } from 'rxjs';
-import { first } from 'rxjs/operators';
+import { catchError, first, map } from 'rxjs/operators';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApplicationRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
@@ -24,23 +24,17 @@ export class AppComponent implements OnInit {
   private updates: SwUpdate = inject(SwUpdate)
   private readonly httpClient: HttpClient = inject(HttpClient);
   ngOnInit(): void {
-    // this.dummyCall();
-    this.updateClient();
-    this.checkUpdate();
+    this.dummyCall();
     this.requestSubscription();
     this.setupPeriodicUpdateCheck();
-    // this.checkForUpdates();
   }
 
   dummyCall() {
-    this.httpClient.get('http://dummy.restapiexample.com/api/v1/employees').subscribe(
-      (res: any) => {
-        this.apiData = res.data;
-        console.log(this.apiData);
-      },
-      (err) => {
-        console.error('Error fetching data:', err);
-    });
+    this.httpClient.get('http://dummy.restapiexample.com/api/v1/employees')
+      .pipe(
+        map((res: any) => this.apiData = res.data)
+      ),
+      catchError((err) => { console.error('Error fetching data:', err); throw err; });
   }
 
   updateClient() {
@@ -52,46 +46,17 @@ export class AppComponent implements OnInit {
 
     this._swUpdate.versionUpdates
         .pipe(
-          // Filter only for the event where the new version is ready
           filter((event): event is VersionReadyEvent => event.type === 'VERSION_READY')
         )
         .subscribe(event => {
           console.log(`Current version: ${event.currentVersion.hash}`);
           console.log(`New version ready: ${event.latestVersion.hash}`);
-          
-          // --- Prompt the user here ---
           const snackBarRef = this._snackbar.open('A new version is available.', 'Reload');
 
           snackBarRef.onAction().subscribe(() => {
             this._swUpdate.activateUpdate().then(() => document.location.reload());
           });
         });
-  }
-
-  checkUpdate() {
-    this.appRef.isStable.subscribe((isStable) => {
-      if (isStable) {
-        const timeInterval = interval(20000);
-        timeInterval.subscribe(() => {
-          this.updates.checkForUpdate().then(() => {
-            console.log('Checked for updates');
-          });
-          console.log('App is stable now, checking for updates every 20 seconds.');
-        });
-      }
-    })
-  }
-
-  checkForUpdates() {
-    console.log("Checking for updates...", 'checkForUpdates');
-    this._swUpdate.versionUpdates
-      .pipe(filter(evt => evt.type === 'VERSION_READY'))
-      .subscribe(() => {
-        const snackBarRef = this._snackbar.open('A new version is available.', 'Reload');
-        snackBarRef.onAction().subscribe(() => {
-          this._swUpdate.activateUpdate().then(() => document.location.reload());
-        });
-      });
   }
 
   requestSubscription() {
@@ -108,16 +73,15 @@ export class AppComponent implements OnInit {
   }
 
   setupPeriodicUpdateCheck() {
+    console.log("Setting up periodic update checks...");
+    this.updateClient()
     const appIsStable$ = this.appRef.isStable.pipe(first(isStable => isStable === true));
-    const everyThirtyMinutes$ = interval(30 * 60 * 1000);
+    const everyThirtyMinutes$ = interval(10000);
     const everyThirtyMinutesOnceAppIsStable$ = concat(appIsStable$, everyThirtyMinutes$);
 
     everyThirtyMinutesOnceAppIsStable$.subscribe(async () => {
       try {
-        const updateFound = await this._swUpdate.checkForUpdate();
-        if (updateFound) {
-          this.checkForUpdates();
-        }
+        this._swUpdate.checkForUpdate();
       } catch (err) {
         console.error('Failed to check for updates:', err);
       }
